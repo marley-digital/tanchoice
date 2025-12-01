@@ -67,6 +67,15 @@ const persistMockDb = () => {
   localStorage.setItem(MOCK_DB_KEY, JSON.stringify(mockDb))
 }
 
+// Get current user ID for Supabase operations
+const getCurrentUserId = async (): Promise<string | null> => {
+  if (isMockedSupabase) {
+    return 'mock-user-id'
+  }
+  const { data: { user } } = await supabase!.auth.getUser()
+  return user?.id || null
+}
+
 const enrichTrip = (trip: Trip): TripWithAnimals => {
   const animals = mockDb.tripAnimals
     .filter((a) => a.trip_id === trip.id)
@@ -105,9 +114,16 @@ export const createSupplier = async (supplier: Omit<Supplier, 'id' | 'created_at
     persistMockDb()
     return newSupplier
   }
+  
+  const userId = await getCurrentUserId()
+  const supplierWithUser = {
+    ...supplier,
+    user_id: userId
+  }
+  
   const { data, error } = await supabase!
     .from('suppliers')
-    .insert(supplier)
+    .insert(supplierWithUser)
     .select()
     .single()
 
@@ -126,6 +142,8 @@ export const updateSupplier = async (id: string, supplier: Partial<Supplier>): P
     if (!updated) throw new Error('Supplier not found')
     return updated
   }
+  
+  // For Supabase, the RLS policy will prevent updating records owned by other users
   const { data, error } = await supabase!
     .from('suppliers')
     .update(supplier)
@@ -222,9 +240,16 @@ export const createTrip = async (
     persistMockDb()
     return enrichTrip(newTrip)
   }
+  
+  const userId = await getCurrentUserId()
+  const tripWithUser = {
+    ...trip,
+    user_id: userId
+  }
+  
   const { data: tripData, error: tripError } = await supabase!
     .from('trips')
-    .insert(trip)
+    .insert(tripWithUser)
     .select()
     .single()
 
@@ -234,6 +259,7 @@ export const createTrip = async (
     ...animal,
     trip_id: tripData.id,
     total_animals: animal.goats_count + animal.sheep_count,
+    user_id: userId
   }))
 
   const { data: animalsData, error: animalsError } = await supabase!
@@ -276,6 +302,10 @@ export const updateTrip = async (
     if (!updatedTrip) throw new Error('Trip not found')
     return enrichTrip(updatedTrip)
   }
+  
+  const userId = await getCurrentUserId()
+  
+  // For Supabase, the RLS policy will prevent updating records owned by other users
   const { data: tripData, error: tripError } = await supabase!
     .from('trips')
     .update(trip)
@@ -296,6 +326,7 @@ export const updateTrip = async (
     ...animal,
     trip_id: id,
     total_animals: animal.goats_count + animal.sheep_count,
+    user_id: userId
   }))
 
   const { data: animalsData, error: animalsError } = await supabase!
